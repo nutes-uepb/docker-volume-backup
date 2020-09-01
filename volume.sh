@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-INSTALL_PATH="/opt/docker-volume-backup"
+INSTALL_PATH="${HOME}/.docker-volume-backup"
 
 isInstalled() {
     ls /usr/local/bin/volume  &> /dev/null
@@ -19,13 +19,13 @@ isInstalled() {
 edit_config()
 {
   # Verifying the existence of .env
-  if [ ! $(find ${INSTALL_PATH} -name env) ]
+  if [ ! $(find ${INSTALL_PATH} -name .env) ]
   then
-    cp ${INSTALL_PATH}/env.example ${INSTALL_PATH}/env
+    cp ${INSTALL_PATH}/env.example ${INSTALL_PATH}/.env
   fi
 
-  editor ${INSTALL_PATH}/$1
-  set -a && . ${INSTALL_PATH}/$1 && set +a
+  editor ${INSTALL_PATH}/.env
+  set -a && . ${INSTALL_PATH}/.env && set +a
 }
 
 validate_bkp_target() {
@@ -185,18 +185,19 @@ elif [ "$1" = "restore" ];then
 	# Creating target file for restore backup
 	restore_config "${BKP_CONFIG_MODEL}" "${VOLUME_NAME}"
 elif [ "$1" = "edit-config" ];then
-
+    edit_config
+    exit
 elif [ "$1" = "version" ];then
     echo "Version: $(git -C ${INSTALL_PATH} describe --tags --abbrev=0)"
     exit
 elif [ "$1" = "uninstall" ];then
     rm /usr/local/bin/volume
-    rm -R /opt/volumes-docker-backup/
+    rm -R "${INSTALL_PATH}"
     STATUS=$(isInstalled)
     if ! ${STATUS}; then
-        echo "****Volume Docker Backup was uninstalled with success!****"
+        echo "****Docker Volume Backup Project was uninstalled with success!****"
     else
-        echo "Volume Docker Backup wasn't uninstalled with success!"
+        echo "Docker Volume Backup Project wasn't uninstalled with success!"
     fi
     exit
 else

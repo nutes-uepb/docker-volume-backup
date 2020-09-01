@@ -1,4 +1,4 @@
-# Volumes Docker Backup
+# Docker Volume Backup
 
 ## Prerequisites
 1. Linux _(Ubuntu 16.04+ recommended)_
@@ -9,14 +9,39 @@
 
 Project to backup and restore Docker volumes. In addition to performing local backups, you can perform backups on Amazon AWS S3 and Google Driver.
 
-### 1. Set the environment variables
+### 1. Instalation
+All software installation is performed using the following command:
+
+```sh
+curl -o- https://raw.githubusercontent.com/ocariot/docker-volume-backup/1.0.0/install.sh | sudo bash
+```
+
+```sh
+wget -qO- https://raw.githubusercontent.com/ocariot/docker-volume-backup/1.0.0/install.sh | sudo bash
+```
+
+
+After the execution of this script has finished, the message `****Docker Volume Backup Project was installed with success!****` will be displayed, thus demonstrating that the software installation was successful. Otherwise, the message to be displayed will be `Docker Volume Backup Project wasn't installed with success!`.
+
+If script execution is successful, the ocariot command will be recognized by bash.
+
+### 2. Set the environment variables
+
+To ensure flexibility and increase security, some parameters are provided via environment variables, eg. CLOUD_ACCESS_KEY_ID, CLOUD_SECRET_ACCESS_KEY, etc.
+
+To configure the environment variables, use the following interface:
+
+```sh
+$ volume edit-config
+```
+#### 2.1 Data Backup Setup
 
 Variables responsible for defining backup settings. The variables with prefix `CLOUD` are commented out by default, to activate them uncommented and set their respective value based on the values provided by the cloud service that you want to perform the backups and restores. The supported cloud storage services are Google Drive and AWS S3.
 
 In order for backup and restore operations to be successful, credentials must be granted permissions to manipulate the cloud storage location:
     
 - [Google Drive](https://console.developers.google.com/apis/credentials)
-When performing the first backup, a link will be provided that redirects the browser to a user's authentication screen at Google, thus granting permission to manipulate Google Drive. In future `backup` or `restore` operations, authentication is not required unless the `ocariot-credentials-data` volume is removed.
+When performing the first backup, a link will be provided that redirects the browser to a user's authentication screen at Google, thus granting permission to manipulate Google Drive. In future `backup` or `restore` operations, authentication is not required unless the `google-credentials` volume is removed.
 
 - [AWS S3](https://docs.aws.amazon.com/pt_br/sdk-for-java/v1/developer-guide/signup-create-iam-user.html)
 To use the `backup` or` restore` operations, it is necessary to associate the following policy with the created user:
@@ -53,23 +78,23 @@ To use the `backup` or` restore` operations, it is necessary to associate the fo
 | `RESTORE_TARGET` | Define the target used to restore the backup. example value: `LOCAL, GOOGLE_DRIVE, AWS`. | `AWS` |
 | `BACKUP_DATA_RETENTION` | Time the data backup will remain stored. Default value (15 days): `15D`. | `15D` |
 
-### 2. Interface commands
+### 3. Interface commands
 
-#### 2.1 Backup
+#### 3.1 Backup
 
 To perform a backup generation, the following interface is reserved:
 
 ```sh
-$ ./volume backup <volume-name>
+$ volume backup <volume-name>
 ```
 
 :pushpin: Note: Make sure that the volume to be backed up is not in use by any services.
 
-#### 2.2 Restore
+#### 3.2 Restore
 To restore a volume, the following interface is reserved:
 
 ```sh
-$ ./volume restore <volume-name>
+$ volume restore <volume-name>
 ```
 
 :pushpin: Note: If a volume already exists it will be overwritten.
@@ -77,3 +102,31 @@ $ ./volume restore <volume-name>
 *Optional parameters:*
 
 - `--time` - You can restore from a particular backup by adding a time parameter to the command restore. For example, using restore `--time 3D `at the end in the above command will restore a backup from 3 days ago. See the [Duplicity manual](http://duplicity.nongnu.org/vers7/duplicity.1.html#toc8) to view the accepted time formats.
+
+
+#### 3.4 Version
+
+Command used to view the current version of the installed software.
+
+```sh
+$ volume version
+```
+
+#### 3.3 Update Software
+
+Command used to update the OCARIoT software interfaces. It will be updated to the latest release.
+
+```sh
+$ volume update
+```
+
+*Optional parameters:*
+
+- `--version` - Defines the version to which you want to migrate the software. For example: `volume update --version 1.3.3`;
+
+#### 3.3 Uninstall
+Interface used to uninstall the OCARIoT platform, this includes removing pre-scheduled backups. Running services will be stopped.
+
+```sh
+$ volume uninstall
+```
