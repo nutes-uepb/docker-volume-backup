@@ -90,6 +90,10 @@ $ volume backup <volume-name>
 
 :pushpin: Note: Make sure that the volume to be backed up is not in use by any services.
 
+*Optional parameters:*
+
+- `--expression <values>` - Parameter used to define a crontab expression that will schedule the generation of a backup. The value of this option must be passed in double quotes. Example: `sudo ocariot stack backup --expression "0 3 * * *"`;
+
 #### 3.2 Restore
 To restore a volume, the following interface is reserved:
 
@@ -111,18 +115,6 @@ Command used to view the current version of the installed software.
 ```sh
 $ volume version
 ```
-
-#### 3.3 Update Software
-
-Command used to update the software interfaces. It will be updated to the latest release.
-
-```sh
-$ volume update
-```
-
-*Optional parameters:*
-
-- `--version` - Defines the version to which you want to migrate the software. For example: `volume update --version 1.3.3`;
 
 #### 3.3 Uninstall
 Interface used to uninstall the program.

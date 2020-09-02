@@ -1,21 +1,6 @@
 #!/usr/bin/env bash
 INSTALL_PATH="${HOME}/.docker-volume-backup"
 
-is_installed() {
-    ls /usr/local/bin/volume  &> /dev/null
-    RET_VOLUME_COMMAND=$?
-
-    ls ${INSTALL_PATH}  &> /dev/null
-    RET_PROJECT=$?
-
-    if [ ${RET_VOLUME_COMMAND} = 0 ] &&
-      [ ${RET_PROJECT} = 0 ]; then
-        echo "true"
-        exit
-    fi
-    echo "false"
-}
-
 check_config() {
   # Verifying the existence of .env
   if [ ! $(find ${INSTALL_PATH} -name .env) ]
@@ -43,26 +28,26 @@ check_restore_target_config() {
 	LOCAL)
 		if [ -z "${LOCAL_TARGET}" ]; then
 			echo "The LOCAL_TARGET environment variable have not been defined."
-			exit
+			exit 1
 		fi
 		;;
 	GOOGLE_DRIVE)
 		if [ -z "${CLOUD_TARGET}" ]; then
 			echo "The CLOUD_TARGET environment variable have not been defined."
-			exit
+			exit 1
 		fi
 		validate_env_environment ${CLOUD_TARGET} "^gdocs://(.*?)@(.*?).*$" "CLOUD_TARGET" "${ERROR_MESSAGE}"
 		;;
 	AWS)
 		if [ -z "${CLOUD_TARGET}" ]; then
 			echo "The CLOUD_TARGET environment variable have not been defined."
-			exit
+			exit 1
 		fi
 		validate_env_environment ${CLOUD_TARGET} "^s3://s3..*..amazonaws.com/(.*?).*$" "${ERROR_MESSAGE}"
 		;;
 	*)
 		echo "The value ${RESTORE_TARGET} in RESTORE_TARGET variable is not supported."
-		exit
+		exit 1
 		;;
 	esac
 }
@@ -70,7 +55,7 @@ check_restore_target_config() {
 check_backup_target_config() {
 	if [ -z "${CLOUD_TARGET}" ] && [ -z "${LOCAL_TARGET}" ]; then
 		echo "No target defined."
-		exit
+		exit 1
 	fi
 
 	ERROR_MESSAGE="The value in CLOUD_TARGET variable is invalid."
@@ -79,7 +64,7 @@ check_backup_target_config() {
 		validate_env_environment ${CLOUD_TARGET} "^gdocs://(.*?)@(.*?).*$" "${ERROR_MESSAGE}"
 		if [ -z "${CLOUD_ACCESS_KEY_ID}" ] || [ -z "${CLOUD_SECRET_ACCESS_KEY}" ]; then
 			echo "The CLOUD_ACCESS_KEY_ID or CLOUD_SECRET_ACCESS_KEY environment variables have not been defined."
-			exit
+			exit 1
 		fi
 #		CREDS_FILE_NAME="googledrive.cred"
 #		CREDS_FILE="$(cloud_bkps "" $1 $2 find /credentials -name ${CREDS_FILE_NAME})"
@@ -92,13 +77,8 @@ check_backup_target_config() {
 		validate_env_environment ${CLOUD_TARGET} "^s3://s3..*..amazonaws.com/(.*?).*$" "${ERROR_MESSAGE}"
 		if [ -z "${CLOUD_ACCESS_KEY_ID}" ] || [ -z "${CLOUD_SECRET_ACCESS_KEY}" ]; then
 			echo "The CLOUD_ACCESS_KEY_ID or CLOUD_SECRET_ACCESS_KEY environment variables have not been defined."
-			exit
+			exit 1
 		fi
-	fi
-
-	if [ "${LOCAL_TARGET}" ]; then
-		ERROR_MESSAGE="The value in LOCAL_TARGET variable is invalid."
-		validate_env_environment ${LOCAL_TARGET} "^/" "${ERROR_MESSAGE}"
 	fi
 }
 
@@ -159,10 +139,11 @@ scheduling() {
 	if [ "${STATUS}" = "enable" ]; then
 		crontab -u ${USER} -l
 		echo "Backup schedule successful!"
+		exit
 	else
 		echo "Unsuccessful backup schedule!"
+		exit 1
 	fi
-	exit
 }
 
 check_config
@@ -185,11 +166,14 @@ if [ "$1" = "backup" ];then
   VOLUME_NAME=$(docker volume ls --format {{.Name}} | grep -E "^$2$")
   if [ -z "${VOLUME_NAME}" ]; then
     echo "Volume not found."
-    exit
+    exit 1
   fi
 
-  if [ "$(echo "$@" | grep -e '--expression ".*"')" ]; then
-    scheduling "$(echo $@ | sed 's/ --expression ".*"//g')"
+  COLUMN_EXPRESSION=$(($(echo "$@" | sed 's/ /\n/g' | grep -ne "--expression" | cut -f1 -d:) + 1))
+  EXPRESSION="${@:${COLUMN_EXPRESSION}:1}"
+  COMMAND_SCHEDULE=$(echo "${@:0}" | sed "s@ --expression\( \([0-9]\|*\)\)\{5\}@@g")
+  if [ ${COLUMN_EXPRESSION} -ne 1 ]; then
+    scheduling "${EXPRESSION} ${COMMAND_SCHEDULE}"
   fi
 
   # Creating target file for backup
@@ -209,12 +193,12 @@ elif [ "$1" = "restore" ];then
 		DIRECTORIES=$(ls ${LOCAL_TARGET} 2>/dev/null)
         if [ $? -ne 0 ]; then
           echo "Directory ${LOCAL_TARGET} not found."
-          exit
+          exit 1
         fi
 
         if [ -z "$(echo "${DIRECTORIES}" | grep -w "$2")" ]; then
           echo "No volume backup was found."
-          exit
+          exit 1
         fi
 	fi
 
@@ -228,18 +212,24 @@ elif [ "$1" = "version" ];then
     echo "Version: $(git -C ${INSTALL_PATH} describe --tags --abbrev=0)"
     exit
 elif [ "$1" = "uninstall" ];then
-    sed -i "/export PATH=$(echo ${INSTALL_PATH}:${PATH}|sed 's/\//\\\//g')/d" ${HOME}/.bashrc
+    sed -i "/alias volume=/d" ${HOME}/.bashrc
     rm -Rf "${INSTALL_PATH}"
-    STATUS=$(is_installed)
-    if ! ${STATUS}; then
+    ls ${INSTALL_PATH} &> /dev/null
+    if [ "$?" = "0" ];then
         echo "****Docker Volume Backup Project was uninstalled with success!****"
     else
         echo "Docker Volume Backup Project wasn't uninstalled with success!"
     fi
+    exec bash
     exit
 else
     echo "Invalid operation."
-    exit
+    exit 1
+fi
+
+if [ "$(docker ps --format {{.Names}} | grep -e "^volumerize$")" ]; then
+    echo "Backup or restore operation in progress. Try again at the end of this operation."
+    exit 1
 fi
 
 docker run -ti --rm \
