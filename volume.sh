@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 INSTALL_PATH="${HOME}/.docker-volume-backup"
 
-isInstalled() {
+is_installed() {
     ls /usr/local/bin/volume  &> /dev/null
     RET_VOLUME_COMMAND=$?
 
@@ -16,19 +16,20 @@ isInstalled() {
     echo "false"
 }
 
-edit_config()
-{
+check_config() {
   # Verifying the existence of .env
   if [ ! $(find ${INSTALL_PATH} -name .env) ]
   then
-    cp ${INSTALL_PATH}/env.example ${INSTALL_PATH}/.env
+    cp ${INSTALL_PATH}/.env.example ${INSTALL_PATH}/.env
   fi
+}
 
+edit_config() {
   editor ${INSTALL_PATH}/.env
   set -a && . ${INSTALL_PATH}/.env && set +a
 }
 
-validate_bkp_target() {
+validate_env_environment() {
 	if [ -z "$(echo $1 | grep -P "$2")" ]; then
 		echo "$3"
 		exit
@@ -50,14 +51,14 @@ check_restore_target_config() {
 			echo "The CLOUD_TARGET environment variable have not been defined."
 			exit
 		fi
-		validate_bkp_target ${CLOUD_TARGET} "^gdocs://(.*?)@(.*?).*$" "CLOUD_TARGET" "${ERROR_MESSAGE}"
+		validate_env_environment ${CLOUD_TARGET} "^gdocs://(.*?)@(.*?).*$" "CLOUD_TARGET" "${ERROR_MESSAGE}"
 		;;
 	AWS)
 		if [ -z "${CLOUD_TARGET}" ]; then
 			echo "The CLOUD_TARGET environment variable have not been defined."
 			exit
 		fi
-		validate_bkp_target ${CLOUD_TARGET} "^s3://s3..*..amazonaws.com/(.*?).*$" "${ERROR_MESSAGE}"
+		validate_env_environment ${CLOUD_TARGET} "^s3://s3..*..amazonaws.com/(.*?).*$" "${ERROR_MESSAGE}"
 		;;
 	*)
 		echo "The value ${RESTORE_TARGET} in RESTORE_TARGET variable is not supported."
@@ -75,7 +76,7 @@ check_backup_target_config() {
 	ERROR_MESSAGE="The value in CLOUD_TARGET variable is invalid."
 
 	if [ "$(echo ${CLOUD_TARGET} | grep -P "^gdocs")" ]; then
-		validate_bkp_target ${CLOUD_TARGET} "^gdocs://(.*?)@(.*?).*$" "${ERROR_MESSAGE}"
+		validate_env_environment ${CLOUD_TARGET} "^gdocs://(.*?)@(.*?).*$" "${ERROR_MESSAGE}"
 		if [ -z "${CLOUD_ACCESS_KEY_ID}" ] || [ -z "${CLOUD_SECRET_ACCESS_KEY}" ]; then
 			echo "The CLOUD_ACCESS_KEY_ID or CLOUD_SECRET_ACCESS_KEY environment variables have not been defined."
 			exit
@@ -88,7 +89,7 @@ check_backup_target_config() {
 	fi
 
 	if [ "$(echo ${CLOUD_TARGET} | grep -P "^s3")" ]; then
-		validate_bkp_target ${CLOUD_TARGET} "^s3://s3..*..amazonaws.com/(.*?).*$" "${ERROR_MESSAGE}"
+		validate_env_environment ${CLOUD_TARGET} "^s3://s3..*..amazonaws.com/(.*?).*$" "${ERROR_MESSAGE}"
 		if [ -z "${CLOUD_ACCESS_KEY_ID}" ] || [ -z "${CLOUD_SECRET_ACCESS_KEY}" ]; then
 			echo "The CLOUD_ACCESS_KEY_ID or CLOUD_SECRET_ACCESS_KEY environment variables have not been defined."
 			exit
@@ -97,7 +98,7 @@ check_backup_target_config() {
 
 	if [ "${LOCAL_TARGET}" ]; then
 		ERROR_MESSAGE="The value in LOCAL_TARGET variable is invalid."
-		validate_bkp_target ${LOCAL_TARGET} "^/" "${ERROR_MESSAGE}"
+		validate_env_environment ${LOCAL_TARGET} "^/" "${ERROR_MESSAGE}"
 	fi
 }
 
@@ -134,7 +135,38 @@ EOF
 	fi
 }
 
-source .env
+check_crontab() {
+	RET_CRONTAB_COMMAND=$(crontab -u "${USER}" -l | grep -F "$1")
+
+	if [ "${RET_CRONTAB_COMMAND}" ]; then
+		echo "enable"
+	else
+		echo "disable"
+	fi
+}
+
+scheduling() {
+    STATUS=$(check_crontab "$1")
+    if [ "${STATUS}" = "enable" ]; then
+		crontab -u ${USER} -l
+		echo "Backup is already scheduled"
+		exit
+	fi
+    (crontab -u ${USER} -l; echo "$1") | crontab -u ${USER} -
+
+    STATUS=$(check_crontab "$1")
+
+	if [ "${STATUS}" = "enable" ]; then
+		crontab -u ${USER} -l
+		echo "Backup schedule successful!"
+	else
+		echo "Unsuccessful backup schedule!"
+	fi
+	exit
+}
+
+check_config
+source ${INSTALL_PATH}/.env
 
 # Createing target file that will be used
 BKP_CONFIG_MODEL=$(mktemp --suffix=.json)
@@ -154,6 +186,10 @@ if [ "$1" = "backup" ];then
   if [ -z "${VOLUME_NAME}" ]; then
     echo "Volume not found."
     exit
+  fi
+
+  if [ "$(echo "$@" | grep -e '--expression ".*"')" ]; then
+    scheduling "$(echo $@ | sed 's/ --expression ".*"//g')"
   fi
 
   # Creating target file for backup
@@ -185,15 +221,16 @@ elif [ "$1" = "restore" ];then
 	# Creating target file for restore backup
 	restore_config "${BKP_CONFIG_MODEL}" "${VOLUME_NAME}"
 elif [ "$1" = "edit-config" ];then
+    check_config
     edit_config
     exit
 elif [ "$1" = "version" ];then
     echo "Version: $(git -C ${INSTALL_PATH} describe --tags --abbrev=0)"
     exit
 elif [ "$1" = "uninstall" ];then
-    rm /usr/local/bin/volume
-    rm -R "${INSTALL_PATH}"
-    STATUS=$(isInstalled)
+    sed -i "/export PATH=$(echo ${INSTALL_PATH}:${PATH}|sed 's/\//\\\//g')/d" ${HOME}/.bashrc
+    rm -Rf "${INSTALL_PATH}"
+    STATUS=$(is_installed)
     if ! ${STATUS}; then
         echo "****Docker Volume Backup Project was uninstalled with success!****"
     else

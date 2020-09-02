@@ -13,11 +13,11 @@ Project to backup and restore Docker volumes. In addition to performing local ba
 All software installation is performed using the following command:
 
 ```sh
-curl -o- https://raw.githubusercontent.com/ocariot/docker-volume-backup/1.0.0/install.sh | sudo bash
+curl -o- https://raw.githubusercontent.com/nutes-uepb/docker-volume-backup/1.0.0/install.sh | bash
 ```
 
 ```sh
-wget -qO- https://raw.githubusercontent.com/ocariot/docker-volume-backup/1.0.0/install.sh | sudo bash
+wget -qO- https://raw.githubusercontent.com/nutes-uepb/docker-volume-backup/1.0.0/install.sh | bash
 ```
 
 
@@ -27,7 +27,7 @@ If script execution is successful, the ocariot command will be recognized by bas
 
 ### 2. Set the environment variables
 
-To ensure flexibility and increase security, some parameters are provided via environment variables, eg. CLOUD_ACCESS_KEY_ID, CLOUD_SECRET_ACCESS_KEY, etc.
+To ensure flexibility and increase security, some parameters are provided via environment variables, eg. `CLOUD_ACCESS_KEY_ID`, `CLOUD_SECRET_ACCESS_KEY`, etc.
 
 To configure the environment variables, use the following interface:
 
@@ -114,7 +114,7 @@ $ volume version
 
 #### 3.3 Update Software
 
-Command used to update the OCARIoT software interfaces. It will be updated to the latest release.
+Command used to update the software interfaces. It will be updated to the latest release.
 
 ```sh
 $ volume update
@@ -125,7 +125,7 @@ $ volume update
 - `--version` - Defines the version to which you want to migrate the software. For example: `volume update --version 1.3.3`;
 
 #### 3.3 Uninstall
-Interface used to uninstall the OCARIoT platform, this includes removing pre-scheduled backups. Running services will be stopped.
+Interface used to uninstall the program.
 
 ```sh
 $ volume uninstall

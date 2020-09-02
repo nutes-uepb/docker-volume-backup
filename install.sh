@@ -8,9 +8,6 @@ version()
 
 isInstalled()
 {
-#    ls /usr/local/bin/volume  &> /dev/null
-#    RET_VOLUME_COMMAND=$?
-
     ls ${INSTALL_PATH}  &> /dev/null
     RET_PROJECT=$?
 
@@ -20,11 +17,6 @@ isInstalled()
     fi
     echo "false"
 }
-
-#if [ "$EUID" -ne 0 ]
-#  then echo "Please run as root"
-#  exit
-#fi
 
 if [ "$#" -ne 0 ]; then
     echo -e "Illegal parameters."
@@ -40,9 +32,9 @@ cp "$(realpath $0 | grep .*docker-volume-backup -o)" "${INSTALL_PATH}" -r
 #git clone https://github.com/nutes-uepb/docker-volume-backup ${INSTALL_PATH} > /dev/null
 #git -C ${INSTALL_PATH} checkout "tags/$(version)" > /dev/null
 
-#ln -s ${INSTALL_PATH}/volume.sh /usr/local/bin/volume
-#chmod +x /usr/local/bin/volume
+chmod +x ${INSTALL_PATH}/volume.sh
 
+echo "export PATH=${INSTALL_PATH}:${PATH}" >> ${HOME}/.bashrc
 STATUS=$(isInstalled)
 if ${STATUS}; then
     echo "****Docker Volume Backup Project was installed with success!****"
