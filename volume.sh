@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 INSTALL_PATH="${HOME}/.docker-volume-backup"
 
-check_config() {
+BACKUP_CONTAINER_NAME="container-volumerize"
+CREDENTIALS_VOLUME="google-credentials"
+
+check_env_config() {
   # Verifying the existence of .env
   if [ ! $(find ${INSTALL_PATH} -name .env) ]
   then
@@ -9,7 +12,7 @@ check_config() {
   fi
 }
 
-edit_config() {
+edit_env_config() {
   editor ${INSTALL_PATH}/.env
   set -a && . ${INSTALL_PATH}/.env && set +a
 }
@@ -21,7 +24,24 @@ validate_env_environment() {
 	fi
 }
 
-check_restore_target_config() {
+cloud_bkps() {
+	docker run -t $1 --rm --name ${BACKUP_CONTAINER_NAME} \
+		-v ${CREDENTIALS_VOLUME}:/credentials \
+		-e "VOLUMERIZE_SOURCE=/source" \
+		-e "VOLUMERIZE_TARGET=${CLOUD_TARGET}" \
+		-e "GOOGLE_DRIVE_ID=${CLOUD_ACCESS_KEY_ID}" \
+		-e "GOOGLE_DRIVE_SECRET=${CLOUD_SECRET_ACCESS_KEY}" \
+		-e "AWS_ACCESS_KEY_ID=${CLOUD_ACCESS_KEY_ID}" \
+		-e "AWS_SECRET_ACCESS_KEY=${CLOUD_SECRET_ACCESS_KEY}" \
+		blacklabelops/volumerize "${@:2}"
+
+	if [ $? -ne 0 ]; then
+		echo "There was a problem communicating with the cloud service"
+		exit
+	fi
+}
+
+check_target_restore_config() {
 	ERROR_MESSAGE="The CLOUD_TARGET variable does not correspond to the RESTORE_TARGET variable."
 
 	case ${RESTORE_TARGET} in
@@ -52,7 +72,7 @@ check_restore_target_config() {
 	esac
 }
 
-check_backup_target_config() {
+check_target_config() {
 	if [ -z "${CLOUD_TARGET}" ] && [ -z "${LOCAL_TARGET}" ]; then
 		echo "No target defined."
 		exit 1
@@ -66,11 +86,11 @@ check_backup_target_config() {
 			echo "The CLOUD_ACCESS_KEY_ID or CLOUD_SECRET_ACCESS_KEY environment variables have not been defined."
 			exit 1
 		fi
-#		CREDS_FILE_NAME="googledrive.cred"
-#		CREDS_FILE="$(cloud_bkps "" $1 $2 find /credentials -name ${CREDS_FILE_NAME})"
-#		if [ -z "$(echo ${CREDS_FILE} | grep ${CREDS_FILE_NAME})" ]; then
-#			cloud_bkps "-i" $1 $2 list
-#		fi
+		CREDS_FILE_NAME="googledrive.cred"
+		CREDS_FILE="$(cloud_bkps "" find /credentials -name ${CREDS_FILE_NAME})"
+		if [ -z "$(echo ${CREDS_FILE} | grep ${CREDS_FILE_NAME})" ]; then
+			cloud_bkps "-i" list
+		fi
 	fi
 
 	if [ "$(echo ${CLOUD_TARGET} | grep -P "^s3")" ]; then
@@ -126,15 +146,15 @@ check_crontab() {
 }
 
 scheduling() {
-    STATUS=$(check_crontab "$1")
-    if [ "${STATUS}" = "enable" ]; then
+  STATUS=$(check_crontab "$1")
+  if [ "${STATUS}" = "enable" ]; then
 		crontab -u ${USER} -l
 		echo "Backup is already scheduled"
 		exit
 	fi
-    (crontab -u ${USER} -l; echo "$1") | crontab -u ${USER} -
+  (crontab -u ${USER} -l; echo "$1") | crontab -u ${USER} -
 
-    STATUS=$(check_crontab "$1")
+  STATUS=$(check_crontab "$1")
 
 	if [ "${STATUS}" = "enable" ]; then
 		crontab -u ${USER} -l
@@ -146,7 +166,21 @@ scheduling() {
 	fi
 }
 
-check_config
+check_volume_in_docker() {
+}
+
+check_volume_in_fs() {
+}
+
+check_volume_in_cloud() {
+}
+
+if [ "$(docker ps --format {{.Names}} | grep -e "^${BACKUP_CONTAINER_NAME}$")" ]; then
+    echo "Backup or restore operation in progress. Try again at the end of this operation."
+    exit 1
+fi
+
+check_env_config
 source ${INSTALL_PATH}/.env
 
 # Createing target file that will be used
@@ -154,8 +188,8 @@ BKP_CONFIG_MODEL=$(mktemp --suffix=.json)
 
 # Checking operation
 if [ "$1" = "backup" ];then
-  # checking backup variables
-  check_backup_target_config
+  # checking target variables
+  check_target_config
 
   # setting operation and configuring volume property
   COMMAND="backupFull"
@@ -169,25 +203,28 @@ if [ "$1" = "backup" ];then
     exit 1
   fi
 
+	CRONTAB_EXPRESSION="\(\(\(\([0-9]\+,\)\+[0-9]\+\|\([0-9]\+\(/\|-\)[0-9]\+\)\|[0-9]\+\|*\) \?\)\{5,7\}\)"
   COLUMN_EXPRESSION=$(($(echo "$@" | sed 's/ /\n/g' | grep -ne "--expression" | cut -f1 -d:) + 1))
   EXPRESSION="${@:${COLUMN_EXPRESSION}:1}"
-  COMMAND_SCHEDULE=$(echo "${@:0}" | sed "s@ --expression\( \([0-9]\|*\)\)\{5\}@@g")
+  COMMAND_SCHEDULE=$(echo "${@:0}" | sed "s@--expression ${CRONTAB_EXPRESSION}@@g")
   if [ ${COLUMN_EXPRESSION} -ne 1 ]; then
     scheduling "${EXPRESSION} ${COMMAND_SCHEDULE}"
   fi
 
   # Creating target file for backup
   multi_backup_config "${BKP_CONFIG_MODEL}" "${VOLUME_NAME}"
-
 elif [ "$1" = "restore" ];then
+  # checking target variables
+  check_target_config
   # checking restore variables
-  check_restore_target_config
+  check_target_restore_config
 
   # setting operation and configuring volume property
 	COMMAND="restore"
 	BACKUP_VOLUME_PROPERTY="ro"
 	SOURCE_VOLUME_PROPERTY=""
 
+	VOLUME_NAME=$2
 	# Checking if volume exist
 	if [ "${RESTORE_TARGET}" = "LOCAL" ]; then
 		DIRECTORIES=$(ls ${LOCAL_TARGET} 2>/dev/null)
@@ -196,53 +233,73 @@ elif [ "$1" = "restore" ];then
           exit 1
         fi
 
-        if [ -z "$(echo "${DIRECTORIES}" | grep -w "$2")" ]; then
+        if [ -z "$(echo "${DIRECTORIES}" | grep -w "${VOLUME_NAME}")" ]; then
           echo "No volume backup was found."
           exit 1
         fi
 	fi
 
+    if [ "${RESTORE_TARGET}" != "LOCAL" ]; then
+        EXPRESSION_GREP=$(echo ${@:2} | sed 's/ /|/g')
+        VOLUMES=$(cloud_bkps "" list --verbosity=9 |
+			grep -oE "${EXPRESSION_GREP}" | sort -u)
+
+			if [ -z "$(echo "${VOLUMES}" | grep -w "${VOLUME_NAME}")" ]; then
+          echo "No volume backup was found."
+          exit 1
+      fi
+    fi
+
+    if [ "$(docker volume ls | grep -we "^${VOLUME_NAME}$")" ]; then
+        docker volume rm ${VOLUME_NAME}
+        if [ $? -ne 0 ];then
+            echo "Restore failed to remove the volume."
+            exit 1
+        fi
+    fi
+
+	  COLUMN_TIME=$(($(echo "$@" | sed 's/ /\n/g' | grep -ne "--time" | cut -f1 -d:) + 1))
+	  TIME="${@:${COLUMN_TIME}:1}"
+	  if [ ${COLUMN_TIME} -ne 1 ]; then
+	    COMMAND="${COMMAND} --time ${TIME}"
+	    echo "${COMMAND}"
+	  fi
 	# Creating target file for restore backup
 	restore_config "${BKP_CONFIG_MODEL}" "${VOLUME_NAME}"
 elif [ "$1" = "edit-config" ];then
-    check_config
-    edit_config
-    exit
+	check_env_config
+  edit_env_config
+  exit
 elif [ "$1" = "version" ];then
-    echo "Version: $(git -C ${INSTALL_PATH} describe --tags --abbrev=0)"
-    exit
+  echo "Version: $(git -C ${INSTALL_PATH} describe --tags --abbrev=0)"
+  exit
 elif [ "$1" = "uninstall" ];then
-    sed -i "/alias volume=/d" ${HOME}/.bashrc
-    rm -Rf "${INSTALL_PATH}"
-    ls ${INSTALL_PATH} &> /dev/null
-    if [ "$?" = "0" ];then
-        echo "****Docker Volume Backup Project was uninstalled with success!****"
-    else
-        echo "Docker Volume Backup Project wasn't uninstalled with success!"
-    fi
-    exec bash
-    exit
+  sed -i "/alias volume=/d" ${HOME}/.bashrc
+  rm -Rf "${INSTALL_PATH}"
+  ls ${INSTALL_PATH} &> /dev/null
+  if [ "$?" != "0" ];then
+      echo "****Docker Volume Backup Project was uninstalled with success!****"
+  else
+      echo "Docker Volume Backup Project wasn't uninstalled with success!"
+  fi
+  exec bash
+  exit
 else
-    echo "Invalid operation."
-    exit 1
-fi
-
-if [ "$(docker ps --format {{.Names}} | grep -e "^volumerize$")" ]; then
-    echo "Backup or restore operation in progress. Try again at the end of this operation."
-    exit 1
+  echo "Invalid operation."
+  exit 1
 fi
 
 docker run -ti --rm \
-    --name volumerize \
+    --name ${BACKUP_CONTAINER_NAME} \
     -v "${BKP_CONFIG_MODEL}":/etc/volumerize/multiconfig.json:rw \
-    -v google-credentials:/credentials \
+    -v ${CREDENTIALS_VOLUME}:/credentials \
     -v "${LOCAL_TARGET}":/local-backup${BACKUP_VOLUME_PROPERTY} \
     -v "${VOLUME_NAME}":/source:${SOURCE_VOLUME_PROPERTY} \
     -v cache_volume:/volumerize-cache \
     -e GOOGLE_DRIVE_ID="${CLOUD_ACCESS_KEY_ID}" \
-	-e GOOGLE_DRIVE_SECRET="${CLOUD_SECRET_ACCESS_KEY}" \
-	-e AWS_ACCESS_KEY_ID=${CLOUD_ACCESS_KEY_ID} \
-	-e AWS_SECRET_ACCESS_KEY=${CLOUD_SECRET_ACCESS_KEY} \
+		-e GOOGLE_DRIVE_SECRET="${CLOUD_SECRET_ACCESS_KEY}" \
+		-e AWS_ACCESS_KEY_ID=${CLOUD_ACCESS_KEY_ID} \
+		-e AWS_SECRET_ACCESS_KEY=${CLOUD_SECRET_ACCESS_KEY} \
     -e VOLUMERIZE_SOURCE="/source" \
     -e VOLUMERIZE_TARGET="multi:///etc/volumerize/multiconfig.json?mode=mirror&onfail=abort" \
     blacklabelops/volumerize bash -c "${COMMAND} && remove-older-than ${BACKUP_DATA_RETENTION} --force"
