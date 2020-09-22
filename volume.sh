@@ -153,7 +153,7 @@ scheduling() {
 	fi
 	(
 		crontab -u ${USER} -l
-		echo "$1"
+		echo "$1 >/dev/null 2>&1"
 	) | crontab -u ${USER} -
 
 	STATUS=$(check_crontab "$1")
@@ -197,13 +197,33 @@ check_volume_in_cloud() {
 	# Checking if volume exist
 	if [ "${RESTORE_TARGET}" != "LOCAL" ]; then
 		EXPRESSION_GREP=$(echo "$1" | sed 's/ /|/g')
-		VOLUMES=$(cloud_bkps "" list --verbosity=9 \
+		CLOUD_VOLUMES=$(cloud_bkps "" list --verbosity=9 \
 			                                          | grep -oE "${EXPRESSION_GREP}" | sort -u)
 
-		if [ -z "${VOLUMES}" ]; then
+		if [ -z "${CLOUD_VOLUMES}" ]; then
 			echo "No volume backup was found."
 			exit 1
 		fi
+	fi
+}
+
+execute_scripts() {
+	for SCRIPT in $1; do
+		source ${SCRIPT}
+	done
+}
+
+execute_pre_scripts(){
+	if [ "$(ls ${PRE_STRATEGIES})" ]; then
+		PRE_SCRIPTS=$(ls ${PRE_STRATEGIES}/*.sh)
+		execute_scripts ${PRE_SCRIPTS}
+	fi
+}
+
+execute_pos_scripts(){
+	if [ "$(ls ${POS_STRATEGIES})" ]; then
+		POS_SCRIPTS=$(ls ${POS_STRATEGIES}/*.sh)
+		execute_scripts ${POS_SCRIPTS}
 	fi
 }
 
@@ -217,6 +237,7 @@ source ${INSTALL_PATH}/.env
 
 # Checking operation
 if [ "$1" = "backup" ]; then
+	execute_pre_scripts
 	# checking target variables
 	check_target_config
 
@@ -234,13 +255,13 @@ if [ "$1" = "backup" ]; then
 		scheduling "${EXPRESSION} ${COMMAND_SCHEDULE}"
 	fi
 
-	VOLUME_NAME=$2
 	for VOLUME in ${VOLUMES}; do
 		# Checking if volume exist
 		check_volume_in_docker "${VOLUME}"
 	done
 
 elif [ "$1" = "restore" ]; then
+	execute_pre_scripts
 	# checking target variables
 	check_target_config
 	# checking restore variables
@@ -252,24 +273,30 @@ elif [ "$1" = "restore" ]; then
 	SOURCE_VOLUME_PROPERTY=""
 
 	VOLUME_NAME=$2
-	# Checking if volume exist
-	check_volume_in_fs "${VOLUME_NAME}"
-	check_volume_in_cloud "${VOLUME_NAME}"
-
-	if [ "$(docker volume ls | grep -we "^${VOLUME_NAME}$")" ]; then
-		docker volume rm ${VOLUME_NAME}
-		if [ $? -ne 0 ]; then
-			echo "Restore failed to remove the volume."
-			exit 1
-		fi
-	fi
-
 	COLUMN_TIME=$(($(echo "$@" | sed 's/ /\n/g' | grep -ne "--time" | cut -f1 -d:) + 1))
 	TIME="${@:${COLUMN_TIME}:1}"
+	VOLUMES=$(echo "${@:2}" | sed "s@--time ${TIME}@@g")
+
 	if [ ${COLUMN_TIME} -ne 1 ]; then
 		COMMAND="${COMMAND} --time ${TIME}"
-		echo "${COMMAND}"
 	fi
+
+	for VOLUME in ${VOLUMES}; do
+		# Checking if volume exist
+		check_volume_in_fs "${VOLUME}"
+		check_volume_in_cloud "${VOLUME}"
+	done
+
+	for VOLUME in ${VOLUMES}; do
+		if [ "$(docker volume ls --format {{.Name}}| grep -we "^${VOLUME}$")" ]; then
+			docker volume rm ${VOLUME} > /dev/null
+			if [ $? -ne 0 ]; then
+				echo "Restore failed to remove the volume."
+				exit 1
+			fi
+			echo "Volume ${VOLUME} removido."
+		fi
+	done
 elif [ "$1" = "edit-config" ]; then
 	check_env_config
 	edit_env_config
@@ -305,7 +332,7 @@ for VOLUME in ${VOLUMES}; do
 		restore_config "${BKP_CONFIG_MODEL}" "${VOLUME}"
 	fi
 
-	docker run -ti --rm \
+	docker run -t --rm \
 		--name ${BACKUP_CONTAINER_NAME} \
 		-v "${BKP_CONFIG_MODEL}":/etc/volumerize/multiconfig.json:rw \
 		-v ${CREDENTIALS_VOLUME}:/credentials \
@@ -318,8 +345,11 @@ for VOLUME in ${VOLUMES}; do
 		-e AWS_SECRET_ACCESS_KEY=${CLOUD_SECRET_ACCESS_KEY} \
 		-e VOLUMERIZE_SOURCE="/source" \
 		-e VOLUMERIZE_TARGET="multi:///etc/volumerize/multiconfig.json?mode=mirror&onfail=abort" \
+		-e TZ=${TZ} \
 		blacklabelops/volumerize bash -c "${COMMAND} && remove-older-than ${BACKUP_DATA_RETENTION} --force"
 done
 
 # removing taget file
 rm -f "${BKP_CONFIG_MODEL}"
+
+execute_pos_scripts

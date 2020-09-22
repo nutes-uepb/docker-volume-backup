@@ -77,6 +77,9 @@ To use the `backup` or` restore` operations, it is necessary to associate the fo
 | `CLOUD_SECRET_ACCESS_KEY` | Client Secret for access Google Driver or S3 service responsible to store backup data. | `J/YXk2xMaJQugb+vYm+c/TbTz+LpMnkxucdfv/Rh` |
 | `RESTORE_TARGET` | Define the target used to restore the backup. example value: `LOCAL, GOOGLE_DRIVE, AWS`. | `AWS` |
 | `BACKUP_DATA_RETENTION` | Time the data backup will remain stored. Default value (15 days): `15D`. | `15D` |
+| `PRE_STRATEGIES` | Directory path that contains the scripts that will be executed before starting the backup or restore operation. All scripts that have the .sh extension will be executed in alphabetical order. | `/path/to/pre/strategies` |
+| `POS_STRATEGIES` | Directory path containing the scripts that will be executed after starting the backup or restore operation. All scripts that have the .sh extension will be executed in alphabetical order. | `/path/to/pos/strategies` |
+| `TZ` | You can set the time zone with the environment variable TZ. | `Europe/Berlin |
 
 ### 3. Interface commands
 
@@ -108,7 +111,7 @@ $ volume restore <volume-name>
 - `--time` - You can restore from a particular backup by adding a time parameter to the command restore. For example, using restore `--time 3D `at the end in the above command will restore a backup from 3 days ago. See the [Duplicity manual](http://duplicity.nongnu.org/vers7/duplicity.1.html#toc8) to view the accepted time formats.
 
 
-#### 3.4 Version
+#### 3.3 Version
 
 Command used to view the current version of the installed software.
 
@@ -116,7 +119,7 @@ Command used to view the current version of the installed software.
 $ volume version
 ```
 
-#### 3.3 Uninstall
+#### 3.4 Uninstall
 Interface used to uninstall the program.
 
 ```sh
