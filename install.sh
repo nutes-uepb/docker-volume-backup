@@ -16,9 +16,9 @@ if [ "$?" = "0" ];then
     echo "Program already installed."
     exit
 fi
-cp "$(realpath $0 | grep .*docker-volume-backup -o)" "${INSTALL_PATH}" -r
-#git clone https://github.com/nutes-uepb/docker-volume-backup ${INSTALL_PATH} > /dev/null
-#git -C ${INSTALL_PATH} checkout "tags/$(version)" > /dev/null
+
+git clone https://github.com/nutes-uepb/docker-volume-backup ${INSTALL_PATH} > /dev/null
+git -C ${INSTALL_PATH} checkout "tags/$(version)" > /dev/null
 
 chmod +x ${INSTALL_PATH}/volume.sh
 echo "alias volume='${INSTALL_PATH}/volume.sh'" >> ${HOME}/.bashrc
