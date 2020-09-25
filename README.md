@@ -4,6 +4,8 @@
 1. Linux _(Ubuntu 16.04+ recommended)_
 2. Docker Engine 18.06.0+
    - Follow all the steps present in the [official documentation](https://docs.docker.com/install/linux/docker-ce/ubuntu/#install-docker-ce).
+3. Ensure that the `editor` command is configured with the standard editor used on the terminal. If not, add the editors used. Example, adding the `nano` editor: `sudo update-alternatives --install /usr/bin/editor editor /usr/bin/nano 100`.
+    - To choose the default editor use the command: `sudo update-alternatives --config editor`
 
 ## Drescription
 
@@ -23,7 +25,7 @@ wget -qO- https://raw.githubusercontent.com/nutes-uepb/docker-volume-backup/1.0.
 
 After the execution of this script has finished, the message `****Docker Volume Backup Project was installed with success!****` will be displayed, thus demonstrating that the software installation was successful. Otherwise, the message to be displayed will be `Docker Volume Backup Project wasn't installed with success!`.
 
-If script execution is successful, the ocariot command will be recognized by bash.
+If script execution is successful, the `volume` command will be recognized by bash.
 
 ### 2. Set the environment variables
 
@@ -79,7 +81,9 @@ To use the `backup` or` restore` operations, it is necessary to associate the fo
 | `BACKUP_DATA_RETENTION` | Time the data backup will remain stored. Default value (15 days): `15D`. | `15D` |
 | `PRE_STRATEGIES` | Directory path that contains the scripts that will be executed before starting the backup or restore operation. All scripts that have the .sh extension will be executed in alphabetical order. | `/path/to/pre/strategies` |
 | `POS_STRATEGIES` | Directory path containing the scripts that will be executed after starting the backup or restore operation. All scripts that have the .sh extension will be executed in alphabetical order. | `/path/to/pos/strategies` |
-| `TZ` | You can set the time zone with the environment variable TZ. | `Europe/Berlin |
+| `TZ` | You can set the time zone with the environment variable TZ. | `Europe/Berlin` |
+| `CONTAINER_NAME` | Name of the container that will perform the backup and restore operations. | `backup-container` |
+| `GOOGLE_CREDENTIALS_VOLUME` | Volume name that stores the google drive credentials. | `google-drive-credentials` |
 
 ### 3. Interface commands
 
@@ -88,27 +92,37 @@ To use the `backup` or` restore` operations, it is necessary to associate the fo
 To perform a backup generation, the following interface is reserved:
 
 ```sh
-$ volume backup <volume-name>
+$ volume backup <volumes-name>
 ```
+
+To view the volumes available for backup on your machine use the command: `docker volume ls --format {{.Name}}`. To backup multiple volumes, separate them by space, example: `volume backup volume1 volume2`.
 
 :pushpin: Note: Make sure that the volume to be backed up is not in use by any services.
 
 *Optional parameters:*
 
-- `--expression <values>` - Parameter used to define a crontab expression that will schedule the generation of a backup. The value of this option must be passed in double quotes. Example: `sudo ocariot stack backup --expression "0 3 * * *"`;
+- `--expression <values>` - Parameter used to define a crontab expression that will schedule the generation of a backup. The value of this option must be passed in double quotes. Example: `volume backup --expression "0 3 * * *"`;
+- `--pre <path>` - Directory path that contains the scripts that will be executed before starting the backup or restore operation. All scripts that have the .sh extension will be executed in alphabetical order.`;
+-  `--pos <path>` - Directory path containing the scripts that will be executed after starting the backup or restore operation. All scripts that have the .sh extension will be executed in alphabetical order.;
+-  `--remove-cache` - parameter used to remove the cache volume used during the backup operation. The removal of this volume will cause, in the next backup operations, the synchronization of the directory where the backups are being sent. The synchronization will be done before the backup operation is performed. This may increase the time for the operation to be completed.
 
 #### 3.2 Restore
 To restore a volume, the following interface is reserved:
 
 ```sh
-$ volume restore <volume-name>
+$ volume restore <volumes-name>
 ```
+To restore multiple volumes, separate them by space, example: `volume restore volume1 volume2`.
 
 :pushpin: Note: If a volume already exists it will be overwritten.
+:pushpin: Note: Make sure that the restore volume is not being used by any service.
 
 *Optional parameters:*
 
 - `--time` - You can restore from a particular backup by adding a time parameter to the command restore. For example, using restore `--time 3D `at the end in the above command will restore a backup from 3 days ago. See the [Duplicity manual](http://duplicity.nongnu.org/vers7/duplicity.1.html#toc8) to view the accepted time formats.
+- `--pre <path>` - Directory path that contains the scripts that will be executed before starting the backup or restore operation. All scripts that have the .sh extension will be executed in alphabetical order.`;
+-  `--pos <path>` - Directory path containing the scripts that will be executed after starting the backup or restore operation. All scripts that have the .sh extension will be executed in alphabetical order.;
+-  `--remove-cache` - Parameter used to remove the cache volume used during the restore operation. The removal of this volume will cause, in the next backup operations, the synchronization of the directory where the backups are being sent. The synchronization will be done before the backup operation is performed. This may increase the time for the operation to be completed.
 
 
 #### 3.3 Version

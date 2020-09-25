@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 INSTALL_PATH="${HOME}/.docker-volume-backup"
 
-BACKUP_CONTAINER_NAME="container-volumerize"
-CREDENTIALS_VOLUME="google-credentials"
-
 check_env_config() {
 	# Verifying the existence of .env
 	if [ ! $(find ${INSTALL_PATH} -name .env) ]; then
@@ -24,8 +21,8 @@ validate_env_environment() {
 }
 
 cloud_bkps() {
-	docker run -t $1 --rm --name ${BACKUP_CONTAINER_NAME} \
-		-v ${CREDENTIALS_VOLUME}:/credentials \
+	docker run -t $1 --rm --name ${CONTAINER_NAME} \
+		-v ${GOOGLE_CREDENTIALS_VOLUME}:/credentials \
 		-e "VOLUMERIZE_SOURCE=/source" \
 		-e "VOLUMERIZE_TARGET=${CLOUD_TARGET}" \
 		-e "GOOGLE_DRIVE_ID=${CLOUD_ACCESS_KEY_ID}" \
@@ -55,7 +52,7 @@ check_target_restore_config() {
 				echo "The CLOUD_TARGET environment variable have not been defined."
 				exit 1
 			fi
-			validate_env_environment ${CLOUD_TARGET} "^gdocs://(.*?)@(.*?).*$" "CLOUD_TARGET" "${ERROR_MESSAGE}"
+			validate_env_environment ${CLOUD_TARGET} "^gdocs://(.*?)@(.*?).*$" "${ERROR_MESSAGE}"
 			;;
 		AWS)
 			if [ -z "${CLOUD_TARGET}" ]; then
@@ -208,26 +205,44 @@ check_volume_in_cloud() {
 }
 
 execute_scripts() {
-	for SCRIPT in $1; do
-		source ${SCRIPT}
-	done
-}
-
-execute_pre_scripts(){
-	if [ "$(ls ${PRE_STRATEGIES})" ]; then
-		PRE_SCRIPTS=$(ls ${PRE_STRATEGIES}/*.sh)
-		execute_scripts ${PRE_SCRIPTS}
+	if [ "$(ls $1 2> /dev/null)" ]; then
+		SCRIPTS=$(ls $1/*.sh)
+		for SCRIPT in ${SCRIPTS}; do
+			source ${SCRIPT}
+		done
 	fi
 }
 
-execute_pos_scripts(){
-	if [ "$(ls ${POS_STRATEGIES})" ]; then
-		POS_SCRIPTS=$(ls ${POS_STRATEGIES}/*.sh)
-		execute_scripts ${POS_SCRIPTS}
+get_parameter() {
+	PARAMETER_VALUE=""
+	PARAMETER=$(($(echo "${@:2}" | sed 's/ /\n/g' | grep -ne "$1" | cut -f1 -d:) + 2))
+	if [ ${PARAMETER} -ne 2 ]; then
+			PARAMETER_VALUE="${@:${PARAMETER}:1}"
+	fi
+	echo "${PARAMETER_VALUE}"
+}
+
+get_volumes() {
+	CRONTAB_EXPRESSION="\(\(\(\([0-9]\+,\)\+[0-9]\+\|\([0-9]\+\(/\|-\)[0-9]\+\)\|[0-9]\+\|*\) \?\)\{4\}\)"
+	PARAMETER_INDEX=$(echo ${@:2} | sed 's/ /\n/g' | grep -ne "--" | cut -f1 -d:)
+	VALUE_INDEX=$(echo ${PARAMETER_INDEX} | sed 's/ /\n/g' | awk '$1!=""{print $1+1}')
+	if [ "${PARAMETER_INDEX}" ]; then
+		echo "${@:2}" | cut -f"${PARAMETER_INDEX} ${VALUE_INDEX}" -d" " --complement | sed "s@${CRONTAB_EXPRESSION}@@g"
+	else
+		echo "${@:2}"
 	fi
 }
 
-if [ "$(docker ps --format {{.Names}} | grep -e "^${BACKUP_CONTAINER_NAME}$")" ]; then
+exist_parameter() {
+	PARAMETER=$(echo "${@:2}" | grep -we "$1")
+	if [ "${PARAMETER}" ]; then
+		echo "true"
+	else
+		echo "false"
+	fi
+}
+
+if [ "$(docker ps --format {{.Names}} | grep -e "^${CONTAINER_NAME}$")" ]; then
 	echo "Backup or restore operation in progress. Try again at the end of this operation."
 	exit 1
 fi
@@ -235,9 +250,14 @@ fi
 check_env_config
 source ${INSTALL_PATH}/.env
 
+CONTAINER_NAME="${CONTAINER_NAME:-backup-container}"
+GOOGLE_CREDENTIALS_VOLUME="${GOOGLE_CREDENTIALS_VOLUME:-google-drive-credentials}"
+TZ="${TZ:-Brazil/East}"
+
+CLI_PRE_SCRIPTS_PATH=$(get_parameter "--pre" $@)
+
 # Checking operation
 if [ "$1" = "backup" ]; then
-	execute_pre_scripts
 	# checking target variables
 	check_target_config
 
@@ -246,13 +266,20 @@ if [ "$1" = "backup" ]; then
 	BACKUP_VOLUME_PROPERTY=""
 	SOURCE_VOLUME_PROPERTY="ro"
 
-	CRONTAB_EXPRESSION="\(\(\(\([0-9]\+,\)\+[0-9]\+\|\([0-9]\+\(/\|-\)[0-9]\+\)\|[0-9]\+\|*\) \?\)\{5,7\}\)"
-	COLUMN_EXPRESSION=$(($(echo "$@" | sed 's/ /\n/g' | grep -ne "--expression" | cut -f1 -d:) + 1))
-	EXPRESSION="${@:${COLUMN_EXPRESSION}:1}"
-	COMMAND_SCHEDULE=$(echo "${@:0}" | sed "s@--expression ${CRONTAB_EXPRESSION}@@g")
-	VOLUMES=$(echo "${@:2}" | sed "s@--expression ${CRONTAB_EXPRESSION}@@g")
-	if [ ${COLUMN_EXPRESSION} -ne 1 ]; then
+	VOLUMES=$(get_volumes "$@")
+	COLUMN_EXPRESSION=$(echo "$@" | sed 's/ /\n/g' | grep -ne "--expression" | cut -f1 -d:)
+	if [ "${COLUMN_EXPRESSION}" ]; then
+		COMMAND_SCHEDULE="${@:0:${COLUMN_EXPRESSION}} ${@:$((${COLUMN_EXPRESSION}+2))}"
+		EXPRESSION="${@:$((${COLUMN_EXPRESSION}+1)):1}"
 		scheduling "${EXPRESSION} ${COMMAND_SCHEDULE}"
+	fi
+
+	if [ "${CLI_PRE_SCRIPTS_PATH}" ];then
+		execute_scripts ${CLI_PRE_SCRIPTS_PATH}
+	fi
+
+	if [ "${PRE_STRATEGIES}" ]; then
+		execute_scripts ${PRE_STRATEGIES}
 	fi
 
 	for VOLUME in ${VOLUMES}; do
@@ -261,7 +288,14 @@ if [ "$1" = "backup" ]; then
 	done
 
 elif [ "$1" = "restore" ]; then
-	execute_pre_scripts
+	if [ "${CLI_PRE_SCRIPTS_PATH}" ];then
+		execute_scripts ${CLI_PRE_SCRIPTS_PATH}
+	fi
+
+	if [ "${PRE_STRATEGIES}" ]; then
+		execute_scripts ${PRE_STRATEGIES}
+	fi
+
 	# checking target variables
 	check_target_config
 	# checking restore variables
@@ -272,12 +306,10 @@ elif [ "$1" = "restore" ]; then
 	BACKUP_VOLUME_PROPERTY="ro"
 	SOURCE_VOLUME_PROPERTY=""
 
-	VOLUME_NAME=$2
-	COLUMN_TIME=$(($(echo "$@" | sed 's/ /\n/g' | grep -ne "--time" | cut -f1 -d:) + 1))
-	TIME="${@:${COLUMN_TIME}:1}"
-	VOLUMES=$(echo "${@:2}" | sed "s@--time ${TIME}@@g")
+	TIME=$(get_parameter "--time" $@)
+	VOLUMES=$(get_volumes "$@")
 
-	if [ ${COLUMN_TIME} -ne 1 ]; then
+	if [ "${TIME}" ]; then
 		COMMAND="${COMMAND} --time ${TIME}"
 	fi
 
@@ -294,7 +326,7 @@ elif [ "$1" = "restore" ]; then
 				echo "Restore failed to remove the volume."
 				exit 1
 			fi
-			echo "Volume ${VOLUME} removido."
+			echo "Volume ${VOLUME} removed."
 		fi
 	done
 elif [ "$1" = "edit-config" ]; then
@@ -332,13 +364,15 @@ for VOLUME in ${VOLUMES}; do
 		restore_config "${BKP_CONFIG_MODEL}" "${VOLUME}"
 	fi
 
+	CACHE_VOLUME="cache-${VOLUME}"
+
 	docker run -t --rm \
-		--name ${BACKUP_CONTAINER_NAME} \
+		--name ${CONTAINER_NAME} \
 		-v "${BKP_CONFIG_MODEL}":/etc/volumerize/multiconfig.json:rw \
-		-v ${CREDENTIALS_VOLUME}:/credentials \
-		-v "${LOCAL_TARGET}":/local-backup${BACKUP_VOLUME_PROPERTY} \
+		-v ${GOOGLE_CREDENTIALS_VOLUME}:/credentials \
+		-v "${LOCAL_TARGET}":/local-backup:${BACKUP_VOLUME_PROPERTY} \
 		-v "${VOLUME}":/source:${SOURCE_VOLUME_PROPERTY} \
-		-v cache_volume:/volumerize-cache \
+		-v ${CACHE_VOLUME}:/volumerize-cache \
 		-e GOOGLE_DRIVE_ID="${CLOUD_ACCESS_KEY_ID}" \
 		-e GOOGLE_DRIVE_SECRET="${CLOUD_SECRET_ACCESS_KEY}" \
 		-e AWS_ACCESS_KEY_ID=${CLOUD_ACCESS_KEY_ID} \
@@ -347,9 +381,27 @@ for VOLUME in ${VOLUMES}; do
 		-e VOLUMERIZE_TARGET="multi:///etc/volumerize/multiconfig.json?mode=mirror&onfail=abort" \
 		-e TZ=${TZ} \
 		blacklabelops/volumerize bash -c "${COMMAND} && remove-older-than ${BACKUP_DATA_RETENTION} --force"
+
+	REMOVE_CACHE=$(exist_parameter "/" $@)
+
+	if ${REMOVE_CACHE}; then
+		docker volume rm ${CACHE_VOLUME} > /dev/null
+		if [ $? -ne 0 ]; then
+			echo "Cache volume ${CACHE_VOLUME} failed when tried removed."
+		else
+			echo "Cache volume ${CACHE_VOLUME} removed with success."
+		fi
+	fi
 done
 
 # removing taget file
 rm -f "${BKP_CONFIG_MODEL}"
 
-execute_pos_scripts
+CLI_POS_SCRIPTS_PATH=$(get_parameter "--pos" $@)
+if [ "${CLI_POS_SCRIPTS_PATH}" ];then
+	execute_scripts ${CLI_POS_SCRIPTS_PATH}
+fi
+
+if [ "${POS_STRATEGIES}" ]; then
+	execute_scripts ${POS_STRATEGIES}
+fi
