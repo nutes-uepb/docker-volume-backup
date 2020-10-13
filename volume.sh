@@ -25,8 +25,12 @@
 #        - backup schedule;
 #        - keeping backups in cache;
 #        - command availability: volume uninstall and volume version;
-#   v1.2.0 13/10/2020, Lucas Barbosa:
-#        - Code optimization
+#   v1.1.0 13/10/2020, Lucas Barbosa:
+#        - Code optimization;
+#   v1.1.1 13/10/2020, Lucas Barbosa:
+#        - Correcting the README;
+#        - Adding the help operation;
+#        - Setting the image version of the volumerize;
 # ------------------------------------------------------------------------------------------------------------------- #
 # Tested in:
 #   bash 4.4.20
@@ -69,7 +73,7 @@ cloud_bkps() {
 		-e "GOOGLE_DRIVE_SECRET=${CLOUD_SECRET_ACCESS_KEY}" \
 		-e "AWS_ACCESS_KEY_ID=${CLOUD_ACCESS_KEY_ID}" \
 		-e "AWS_SECRET_ACCESS_KEY=${CLOUD_SECRET_ACCESS_KEY}" \
-		blacklabelops/volumerize "${@:2}"
+		blacklabelops/volumerize:"${VOLUMERIZE_VERSION}" "${@:2}"
 
 	[ $? -ne 0 ] && close_program "There was a problem communicating with the cloud service" 1
 }
@@ -226,6 +230,7 @@ check_env_config
 # ------------------------------- VARIABLES ----------------------------------------- #
 
 source ${INSTALL_PATH}/.env
+VOLUMERIZE_VERSION="1.5.1"
 GREEN="\033[32m"
 RED="\033[31m"
 BOLD="\033[1m"
@@ -257,7 +262,7 @@ USAGE:
 # ------------------------------- EXECUTIONS ----------------------------------------- #
 
 case "$1" in
-		backup | restore | edit-config | version | uninstall) OPERATION="$1" && shift;;
+		backup | restore | edit-config | version | uninstall | help) OPERATION="$1" && shift;;
 		*) print_message "${USAGE}" "${BOLD}" && close_program "Invalid operation." 1
 esac
 
@@ -326,6 +331,9 @@ case "${OPERATION}" in
 	version)
 		print_message "Version: $(git -C ${INSTALL_PATH} describe --tags --abbrev=0)" "${GREEN}" && close_program
 		;;
+	help)
+		print_message "${USAGE}" "${BOLD}" && close_program
+		;;
 	uninstall)
 		sed -i "/alias volume=/d" ${HOME}/.bashrc && rm -Rf "${INSTALL_PATH}"
 		if [ ! -d "${INSTALL_PATH}" ]; then
@@ -368,7 +376,7 @@ for VOLUME in ${VOLUMES}; do
 		-e VOLUMERIZE_SOURCE="/source" \
 		-e VOLUMERIZE_TARGET="multi:///etc/volumerize/multiconfig.json?mode=mirror&onfail=abort" \
 		-e TZ=${TZ} \
-		blacklabelops/volumerize bash -c "${COMMAND} && remove-older-than ${BACKUP_DATA_RETENTION} --force"
+		blacklabelops/volumerize:"${VOLUMERIZE_VERSION}" bash -c "${COMMAND} && remove-older-than ${BACKUP_DATA_RETENTION} --force"
 
 	[ "${REMOVE_CACHE}" ] && {
 		docker volume rm ${CACHE_VOLUME} > /dev/null
