@@ -31,6 +31,8 @@
 #        - Correcting the README;
 #        - Adding the help operation;
 #        - Setting the image version of the volumerize;
+#   v1.1.2 13/10/2020, Lucas Barbosa:
+#        - Correcting the execution times of the hook scripts;
 # ------------------------------------------------------------------------------------------------------------------- #
 # Tested in:
 #   bash 4.4.20
@@ -291,15 +293,20 @@ case "${OPERATION}" in
 
 		[ -n "${EXPRESSION}" ] && {
 			COMMAND_SCHEDULE="$0 ${OPERATION} ${VOLUMES}"
+			[ -n "${CLI_PRE_SCRIPTS_PATH}" ] && COMMAND_SCHEDULE="${COMMAND_SCHEDULE} --pre ${CLI_PRE_SCRIPTS_PATH}"
+			[ -n "${CLI_POS_SCRIPTS_PATH}" ] && COMMAND_SCHEDULE="${COMMAND_SCHEDULE} --pos ${CLI_POS_SCRIPTS_PATH}"
+			[ -n "${REMOVE_CACHE}" ] && COMMAND_SCHEDULE="${COMMAND_SCHEDULE} --remove-cache"
 			scheduling "${EXPRESSION} ${COMMAND_SCHEDULE}"
 		}
 
+		execute_scripts "${PRE_STRATEGIES}"; execute_scripts "${CLI_PRE_SCRIPTS_PATH}"
 		for VOLUME in ${VOLUMES}; do
 			# Checking if volume exist
 			check_volume_in_docker "${VOLUME}"
 		done
 		;;
 	restore)
+		execute_scripts "${PRE_STRATEGIES}"; execute_scripts "${CLI_PRE_SCRIPTS_PATH}"
 		# checking target variables
 		check_target_config
 		# checking restore variables
@@ -345,8 +352,6 @@ case "${OPERATION}" in
 		;;
 esac
 
-execute_scripts "${CLI_PRE_SCRIPTS_PATH}" && execute_scripts "${PRE_STRATEGIES}"
-
 # Createing target file that will be used
 BKP_CONFIG_MODEL=$(mktemp --suffix=.json)
 
@@ -391,6 +396,6 @@ done
 # removing taget file
 rm -f "${BKP_CONFIG_MODEL}"
 
-execute_scripts ${CLI_POS_SCRIPTS_PATH} && execute_scripts ${POS_STRATEGIES}
+execute_scripts "${POS_STRATEGIES}"; execute_scripts "${CLI_POS_SCRIPTS_PATH}"
 
 # ------------------------------------------------------------------------------------------------------------------- #
