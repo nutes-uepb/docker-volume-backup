@@ -1,11 +1,54 @@
 #!/usr/bin/env bash
-INSTALL_PATH="${HOME}/.docker-volume-backup"
+#
+# volume.sh - Backup and restore Docker volumes.
+#
+# Email:      lucas.barbosa@nutes.uepb.edu.br
+# Author:      Lucas Barbosa Oliveira
+# Maintenance: Lucas Barbosa Oliveira
+#
+# ------------------------------------------------------------------------------------------------------------------- #
+#  This program will backup and restore Docker volumes.
+#
+#  Examples:
+#      To configure the environment variables, use the following interface:
+#      $ volume edit-config
+#      To perform a backup generation, the following interface is reserved:
+#      $ volume backup <volumes-name>
+#      To restore a volume, the following interface is reserved:
+#      $ volume restore <volumes-name>
+# ------------------------------------------------------------------------------------------------------------------- #
+# Historic:
+#
+#   v1.0.0 25/11/2020, Lucas Barbosa:
+#				 - backup/restore locally;
+#        - backup/restore in the cloud (Google Drive/AWS S3);
+#        - backup schedule;
+#        - keeping backups in cache;
+#        - command availability: volume uninstall and volume version;
+#   v1.2.0 13/10/2020, Lucas Barbosa:
+#        - Code optimization
+# ------------------------------------------------------------------------------------------------------------------- #
+# Tested in:
+#   bash 4.4.20
+#   Docker Engine 18.06.0+
+# ------------------------------------------------------------------------------------------------------------------- #
+
+# ------------------------------- FUNCTIONS ----------------------------------------- #
+
+print_message() {
+	echo -e "$2$1"
+}
+
+close_program() {
+	local color="${GREEN}"
+	[ "$2" ] && [ $2 -ne 0 ] && color="${RED}"
+	[ -n "$1" ] && print_message "$1" "${color}"
+	[ "${color}" = "${RED}" ] && exit 1 || exit 0
+}
 
 check_env_config() {
 	# Verifying the existence of .env
-	if [ ! $(find ${INSTALL_PATH} -name .env) ]; then
-		cp ${INSTALL_PATH}/.env.example ${INSTALL_PATH}/.env
-	fi
+	[ -f "${INSTALL_PATH}/.env" ] || cp ${INSTALL_PATH}/.env.example ${INSTALL_PATH}/.env
 }
 
 edit_env_config() {
@@ -14,10 +57,7 @@ edit_env_config() {
 }
 
 validate_env_environment() {
-	if [ -z "$(echo $1 | grep -P "$2")" ]; then
-		echo "$3"
-		exit
-	fi
+	[ -z "$(echo $1 | grep -P "$2")" ] && close_program "$3"  1
 }
 
 cloud_bkps() {
@@ -31,69 +71,51 @@ cloud_bkps() {
 		-e "AWS_SECRET_ACCESS_KEY=${CLOUD_SECRET_ACCESS_KEY}" \
 		blacklabelops/volumerize "${@:2}"
 
-	if [ $? -ne 0 ]; then
-		echo "There was a problem communicating with the cloud service"
-		exit
-	fi
+	[ $? -ne 0 ] && close_program "There was a problem communicating with the cloud service" 1
 }
 
 check_target_restore_config() {
-	ERROR_MESSAGE="The CLOUD_TARGET variable does not correspond to the RESTORE_TARGET variable."
+	local error_message="The CLOUD_TARGET variable does not correspond to the RESTORE_TARGET variable."
 
 	case ${RESTORE_TARGET} in
 		LOCAL)
-			if [ -z "${LOCAL_TARGET}" ]; then
-				echo "The LOCAL_TARGET environment variable have not been defined."
-				exit 1
-			fi
+			[ -z "${LOCAL_TARGET}" ] && close_program "The LOCAL_TARGET environment variable have not been defined." 1
 			;;
 		GOOGLE_DRIVE)
-			if [ -z "${CLOUD_TARGET}" ]; then
-				echo "The CLOUD_TARGET environment variable have not been defined."
-				exit 1
-			fi
-			validate_env_environment ${CLOUD_TARGET} "^gdocs://(.*?)@(.*?).*$" "${ERROR_MESSAGE}"
+			[ -z "${CLOUD_TARGET}" ] && close_program "The CLOUD_TARGET environment variable have not been defined." 1
+			validate_env_environment ${CLOUD_TARGET} "^gdocs://(.*?)@(.*?).*$" "${error_message}"
 			;;
 		AWS)
-			if [ -z "${CLOUD_TARGET}" ]; then
-				echo "The CLOUD_TARGET environment variable have not been defined."
-				exit 1
-			fi
-			validate_env_environment ${CLOUD_TARGET} "^s3://s3..*..amazonaws.com/(.*?).*$" "${ERROR_MESSAGE}"
+			[ -z "${CLOUD_TARGET}" ] && close_program "The CLOUD_TARGET environment variable have not been defined." 1
+			validate_env_environment ${CLOUD_TARGET} "^s3://s3..*..amazonaws.com/(.*?).*$" "${error_message}"
 			;;
 		*)
-			echo "The value ${RESTORE_TARGET} in RESTORE_TARGET variable is not supported."
-			exit 1
+			close_program "The value ${RESTORE_TARGET} in RESTORE_TARGET variable is not supported." 1
 			;;
 	esac
 }
 
 check_target_config() {
-	if [ -z "${CLOUD_TARGET}" ] && [ -z "${LOCAL_TARGET}" ]; then
-		echo "No target defined."
-		exit 1
-	fi
+	[ -z "${CLOUD_TARGET}" ] && [ -z "${LOCAL_TARGET}" ] && close_program "No target defined." 1
 
-	ERROR_MESSAGE="The value in CLOUD_TARGET variable is invalid."
+	local error_message="The value in CLOUD_TARGET variable is invalid."
 
 	if [ "$(echo ${CLOUD_TARGET} | grep -P "^gdocs")" ]; then
-		validate_env_environment ${CLOUD_TARGET} "^gdocs://(.*?)@(.*?).*$" "${ERROR_MESSAGE}"
+		validate_env_environment ${CLOUD_TARGET} "^gdocs://(.*?)@(.*?).*$" "${error_message}"
 		if [ -z "${CLOUD_ACCESS_KEY_ID}" ] || [ -z "${CLOUD_SECRET_ACCESS_KEY}" ]; then
-			echo "The CLOUD_ACCESS_KEY_ID or CLOUD_SECRET_ACCESS_KEY environment variables have not been defined."
-			exit 1
+			close_program "The CLOUD_ACCESS_KEY_ID or CLOUD_SECRET_ACCESS_KEY environment variables have not been defined." 1
 		fi
-		CREDS_FILE_NAME="googledrive.cred"
-		CREDS_FILE="$(cloud_bkps "" find /credentials -name ${CREDS_FILE_NAME})"
-		if [ -z "$(echo ${CREDS_FILE} | grep ${CREDS_FILE_NAME})" ]; then
+		local creds_file_name="googledrive.cred"
+		local creds_file="$(cloud_bkps "" find /credentials -name ${creds_file_name})"
+		if [ -z "$(echo ${creds_file} | grep ${creds_file_name})" ]; then
 			cloud_bkps "-i" list
 		fi
 	fi
 
 	if [ "$(echo ${CLOUD_TARGET} | grep -P "^s3")" ]; then
-		validate_env_environment ${CLOUD_TARGET} "^s3://s3..*..amazonaws.com/(.*?).*$" "${ERROR_MESSAGE}"
+		validate_env_environment ${CLOUD_TARGET} "^s3://s3..*..amazonaws.com/(.*?).*$" "${error_message}"
 		if [ -z "${CLOUD_ACCESS_KEY_ID}" ] || [ -z "${CLOUD_SECRET_ACCESS_KEY}" ]; then
-			echo "The CLOUD_ACCESS_KEY_ID or CLOUD_SECRET_ACCESS_KEY environment variables have not been defined."
-			exit 1
+			close_program "The CLOUD_ACCESS_KEY_ID or CLOUD_SECRET_ACCESS_KEY environment variables have not been defined." 1
 		fi
 	fi
 }
@@ -104,15 +126,15 @@ multi_backup_config() {
 ]
 EOF
 
-	if [ "${LOCAL_TARGET}" ]; then
+	[ "${LOCAL_TARGET}" ] && {
 		sed -i 's/]//g;s/}$/},/g' $1
 		echo -e " { \"description\": \"Local disk test\", \"url\": \"file:///local-backup/$2\" }\n]" >> $1
-	fi
+	}
 
-	if [ "${CLOUD_TARGET}" ]; then
+	[ "${CLOUD_TARGET}" ] && {
 		sed -i 's/]//g;s/}$/},/g' $1
 		echo -e " { \"description\": \"Local disk test\", \"url\": \"${CLOUD_TARGET}/$2\" }\n]" >> $1
-	fi
+	}
 
 }
 
@@ -122,241 +144,207 @@ restore_config() {
 ]
 EOF
 
+	sed -i 's/]//g;s/}$/},/g' $1
+
 	if [ "${RESTORE_TARGET}" = "LOCAL" ]; then
-		sed -i 's/]//g;s/}$/},/g' $1
 		echo -e " { \"description\": \"Local disk test\", \"url\": \"file:///local-backup/$2\" }\n]" >> $1
 	else
-		sed -i 's/]//g;s/}$/},/g' $1
 		echo -e " { \"description\": \"Local disk test\", \"url\": \"${CLOUD_TARGET}/$2\" }\n]" >> $1
 	fi
 }
 
 check_crontab() {
-	RET_CRONTAB_COMMAND=$(crontab -u "${USER}" -l | grep -F "$1")
-
-	if [ "${RET_CRONTAB_COMMAND}" ]; then
-		echo "enable"
-	else
-		echo "disable"
-	fi
+	[ -n "$(crontab -u "${USER}" -l | grep -F "$1")" ] && echo "enable" || echo "disable"
 }
 
 scheduling() {
-	STATUS=$(check_crontab "$1")
-	if [ "${STATUS}" = "enable" ]; then
+	local status=$(check_crontab "$1")
+	[ "${status}" = "enable" ] && {
 		crontab -u ${USER} -l
-		echo "Backup is already scheduled"
-		exit
-	fi
+		close_program "Backup is already scheduled"
+	}
 	(
 		crontab -u ${USER} -l
 		echo "$1 >/dev/null 2>&1"
 	) | crontab -u ${USER} -
 
-	STATUS=$(check_crontab "$1")
+	status=$(check_crontab "$1")
 
-	if [ "${STATUS}" = "enable" ]; then
-		crontab -u ${USER} -l
-		echo "Backup schedule successful!"
-		exit
+	if [ "${status}" = "enable" ]; then
+		crontab -u ${USER} -l && close_program "Backup schedule successful!"
 	else
-		echo "Unsuccessful backup schedule!"
-		exit 1
+		close_program "Unsuccessful backup schedule!" 1
 	fi
 }
 
 check_volume_in_docker() {
 	# Checking if volume exist
-	VOLUME_NAME=$(docker volume ls --format {{.Name}} | grep -E "^$1$")
-	if [ -z "${VOLUME_NAME}" ]; then
-		echo "Volume ${VOLUME_NAME} not found."
-		exit 1
-	fi
+	local volume_name=$(docker volume ls --format {{.Name}} | grep -E "^$1$")
+	[ -z "${volume_name}" ] && close_program "Volume ${volume_name} not found." 1
 }
 
 check_volume_in_fs() {
 	# Checking if volume exist
-	if [ "${RESTORE_TARGET}" = "LOCAL" ]; then
-		DIRECTORIES=$(ls ${LOCAL_TARGET} 2> /dev/null)
-		if [ $? -ne 0 ]; then
-			echo "Directory ${LOCAL_TARGET} not found."
-			exit 1
-		fi
-
-		if [ -z "$(echo "${DIRECTORIES}" | grep -w "$1")" ]; then
-			echo "No volume backup was found."
-			exit 1
-		fi
-	fi
+	[ "${RESTORE_TARGET}" = "LOCAL" ] && {
+		[ -d "${LOCAL_TARGET}" ] || close_program "Directory ${LOCAL_TARGET} not found." 1
+		[ -d "${LOCAL_TARGET}/$1" ] || close_program "Volume backup $1 weren't found." 1
+	}
 }
 
 check_volume_in_cloud() {
 	# Checking if volume exist
-	if [ "${RESTORE_TARGET}" != "LOCAL" ]; then
-		EXPRESSION_GREP=$(echo "$1" | sed 's/ /|/g')
-		CLOUD_VOLUMES=$(cloud_bkps "" list --verbosity=9 \
-			                                          | grep -oE "${EXPRESSION_GREP}" | sort -u)
-
-		if [ -z "${CLOUD_VOLUMES}" ]; then
-			echo "No volume backup was found."
-			exit 1
-		fi
-	fi
+	[ "${RESTORE_TARGET}" != "LOCAL" ] && {
+		local expression_grep=$(echo "$1" | sed 's/ /|/g')
+		local cloud_volumes=$(cloud_bkps "" list --verbosity=9 | grep -oE "${expression_grep}" | sort -u)
+		[ -z "${cloud_volumes}" ] && close_program "No volume backup was found." 1
+	}
 }
 
 execute_scripts() {
-	if [ "$(ls $1 2> /dev/null)" ]; then
-		SCRIPTS=$(ls $1/*.sh)
-		for SCRIPT in ${SCRIPTS}; do
-			source ${SCRIPT}
+	[ -d "$1" ] && {
+		local scripts=$(ls $1/*.sh)
+		for script in ${scripts}; do
+			source ${script}
 		done
-	fi
+	}
 }
 
-get_parameter() {
-	PARAMETER_VALUE=""
-	PARAMETER=$(($(echo "${@:2}" | sed 's/ /\n/g' | grep -ne "$1" | cut -f1 -d:) + 2))
-	if [ ${PARAMETER} -ne 2 ]; then
-			PARAMETER_VALUE="${@:${PARAMETER}:1}"
-	fi
-	echo "${PARAMETER_VALUE}"
-}
+# ------------------------------------------------------------------------------------------------------------------- #
 
-get_volumes() {
-	CRONTAB_EXPRESSION="\(\(\(\([0-9]\+,\)\+[0-9]\+\|\([0-9]\+\(/\|-\)[0-9]\+\)\|[0-9]\+\|*\) \?\)\{4\}\)"
-	PARAMETER_INDEX=$(echo ${@:2} | sed 's/ /\n/g' | grep -ne "--" | cut -f1 -d:)
-	VALUE_INDEX=$(echo ${PARAMETER_INDEX} | sed 's/ /\n/g' | awk '$1!=""{print $1+1}')
-	if [ "${PARAMETER_INDEX}" ]; then
-		echo "${@:2}" | cut -f"${PARAMETER_INDEX} ${VALUE_INDEX}" -d" " --complement | sed "s@${CRONTAB_EXPRESSION}@@g"
-	else
-		echo "${@:2}"
-	fi
-}
+INSTALL_PATH="${HOME}/.docker-volume-backup"
 
-exist_parameter() {
-	PARAMETER=$(echo "${@:2}" | grep -we "$1")
-	if [ "${PARAMETER}" ]; then
-		echo "true"
-	else
-		echo "false"
-	fi
-}
+# ------------------------------- TESTS ----------------------------------------- #
 
-if [ "$(docker ps --format {{.Names}} | grep -e "^${CONTAINER_NAME}$")" ]; then
-	echo "Backup or restore operation in progress. Try again at the end of this operation."
-	exit 1
-fi
+[ "$(docker ps --format {{.Names}} | grep -e "^${CONTAINER_NAME}$")" ] && {
+	close_program "Backup or restore operation in progress. Try again at the end of this operation." 1
+}
 
 check_env_config
-source ${INSTALL_PATH}/.env
 
+# ------------------------------------------------------------------------------------------------------------------- #
+
+# ------------------------------- VARIABLES ----------------------------------------- #
+
+source ${INSTALL_PATH}/.env
+GREEN="\033[32m"
+RED="\033[31m"
+BOLD="\033[1m"
 CONTAINER_NAME="${CONTAINER_NAME:-backup-container}"
 GOOGLE_CREDENTIALS_VOLUME="${GOOGLE_CREDENTIALS_VOLUME:-google-drive-credentials}"
 TZ="${TZ:-Brazil/East}"
+OPERATION=""
+VOLUMES=""
 
-CLI_PRE_SCRIPTS_PATH=$(get_parameter "--pre" $@)
+USAGE="
+USAGE:
+ volume - [ACTIONS]
+          edit-config - To configure the environment variables.
+          backup -To perform a backup generation.
+          restore - To restore a volume.
+          version - Command used to view the current version of the installed software.
+          uninstall - Interface used to uninstall the program.
 
-# Checking operation
-if [ "$1" = "backup" ]; then
-	# checking target variables
-	check_target_config
+        - [OPTIONS]
+         --time - You can restore from a particular backup by adding a time parameter to the command restore.
+         --pre - Directory path that contains the scripts that will be executed before starting the backup or restore operation.
+         --pos - Directory path containing the scripts that will be executed after starting the backup or restore operation.
+         --remove-cache - Parameter used to remove the cache volume used during the restore operation.
+         --expression -  Parameter used to define a crontab expression that will schedule the generation of a backup. The value of this option must be passed in double quotes.
+"
 
-	# setting operation and configuring volume property
-	COMMAND="backupFull"
-	BACKUP_VOLUME_PROPERTY=""
-	SOURCE_VOLUME_PROPERTY="ro"
+# ------------------------------------------------------------------------------------------------------------------- #
 
-	VOLUMES=$(get_volumes "$@")
-	COLUMN_EXPRESSION=$(echo "$@" | sed 's/ /\n/g' | grep -ne "--expression" | cut -f1 -d:)
-	if [ "${COLUMN_EXPRESSION}" ]; then
-		COMMAND_SCHEDULE="${@:0:${COLUMN_EXPRESSION}} ${@:$((${COLUMN_EXPRESSION}+2))}"
-		EXPRESSION="${@:$((${COLUMN_EXPRESSION}+1)):1}"
-		scheduling "${EXPRESSION} ${COMMAND_SCHEDULE}"
-	fi
+# ------------------------------- EXECUTIONS ----------------------------------------- #
 
-	if [ "${CLI_PRE_SCRIPTS_PATH}" ];then
-		execute_scripts ${CLI_PRE_SCRIPTS_PATH}
-	fi
+case "$1" in
+		backup | restore | edit-config | version | uninstall) OPERATION="$1" && shift;;
+		*) print_message "${USAGE}" "${BOLD}" && close_program "Invalid operation." 1
+esac
 
-	if [ "${PRE_STRATEGIES}" ]; then
-		execute_scripts ${PRE_STRATEGIES}
-	fi
+while test -n "$1"
+do
+	case "$1" in
+			--pre) CLI_PRE_SCRIPTS_PATH="$2" && shift ;;
+			--pos) CLI_POS_SCRIPTS_PATH="$2" && shift ;;
+			--timer) TIME="$2" && shift ;;
+			--expression) EXPRESSION="$2" && shift ;;
+			--remove-cache) REMOVE_CACHE="true" ;;
+			*) [ -z "$(echo "$1" | grep -e "^--")" ] && VOLUMES="$1 ${VOLUMES}" ;;
+	esac
+	shift
+done
 
-	for VOLUME in ${VOLUMES}; do
-		# Checking if volume exist
-		check_volume_in_docker "${VOLUME}"
-	done
+case "${OPERATION}" in
+	backup)
+		# checking target variables
+		check_target_config
 
-elif [ "$1" = "restore" ]; then
-	if [ "${CLI_PRE_SCRIPTS_PATH}" ];then
-		execute_scripts ${CLI_PRE_SCRIPTS_PATH}
-	fi
+		# setting operation and configuring volume property
+		COMMAND="backupFull"
+		BACKUP_VOLUME_PROPERTY=""
+		SOURCE_VOLUME_PROPERTY="ro"
 
-	if [ "${PRE_STRATEGIES}" ]; then
-		execute_scripts ${PRE_STRATEGIES}
-	fi
+		[ -n "${EXPRESSION}" ] && {
+			COMMAND_SCHEDULE="$0 ${OPERATION} ${VOLUMES}"
+			scheduling "${EXPRESSION} ${COMMAND_SCHEDULE}"
+		}
 
-	# checking target variables
-	check_target_config
-	# checking restore variables
-	check_target_restore_config
+		for VOLUME in ${VOLUMES}; do
+			# Checking if volume exist
+			check_volume_in_docker "${VOLUME}"
+		done
+		;;
+	restore)
+		# checking target variables
+		check_target_config
+		# checking restore variables
+		check_target_restore_config
 
-	# setting operation and configuring volume property
-	COMMAND="restore"
-	BACKUP_VOLUME_PROPERTY="ro"
-	SOURCE_VOLUME_PROPERTY=""
+		# setting operation and configuring volume property
+		COMMAND="restore"
+		BACKUP_VOLUME_PROPERTY="ro"
+		SOURCE_VOLUME_PROPERTY=""
 
-	TIME=$(get_parameter "--time" $@)
-	VOLUMES=$(get_volumes "$@")
+		[ "${TIME}" ] && COMMAND="${COMMAND} --time ${TIME}"
 
-	if [ "${TIME}" ]; then
-		COMMAND="${COMMAND} --time ${TIME}"
-	fi
+		for VOLUME in ${VOLUMES}; do
+			# Checking if volume exist
+			check_volume_in_fs "${VOLUME}"
+			check_volume_in_cloud "${VOLUME}"
+		done
 
-	for VOLUME in ${VOLUMES}; do
-		# Checking if volume exist
-		check_volume_in_fs "${VOLUME}"
-		check_volume_in_cloud "${VOLUME}"
-	done
-
-	for VOLUME in ${VOLUMES}; do
-		if [ "$(docker volume ls --format {{.Name}}| grep -we "^${VOLUME}$")" ]; then
-			docker volume rm ${VOLUME} > /dev/null
-			if [ $? -ne 0 ]; then
-				echo "Restore failed to remove the volume."
-				exit 1
-			fi
-			echo "Volume ${VOLUME} removed."
+		for VOLUME in ${VOLUMES}; do
+			[ "$(docker volume ls --format {{.Name}}| grep -we "^${VOLUME}$")" ] && {
+				docker volume rm ${VOLUME} > /dev/null
+				[ $? -eq 0 ] && echo "Volume ${VOLUME} removed." || close_program "Restore failed to remove the volume." 1
+			}
+		done
+		;;
+	edit-config)
+		check_env_config && edit_env_config && close_program
+		;;
+	version)
+		print_message "Version: $(git -C ${INSTALL_PATH} describe --tags --abbrev=0)" "${GREEN}" && close_program
+		;;
+	uninstall)
+		sed -i "/alias volume=/d" ${HOME}/.bashrc && rm -Rf "${INSTALL_PATH}"
+		if [ ! -d "${INSTALL_PATH}" ]; then
+			print_message "****Docker Volume Backup Project was uninstalled with success!****" "${GREEN}"
+		else
+			print_message "Docker Volume Backup Project wasn't uninstalled with success!" "${RED}"
 		fi
-	done
-elif [ "$1" = "edit-config" ]; then
-	check_env_config
-	edit_env_config
-	exit
-elif [ "$1" = "version" ]; then
-	echo "Version: $(git -C ${INSTALL_PATH} describe --tags --abbrev=0)"
-	exit
-elif [ "$1" = "uninstall" ]; then
-	sed -i "/alias volume=/d" ${HOME}/.bashrc
-	rm -Rf "${INSTALL_PATH}"
-	ls ${INSTALL_PATH} &> /dev/null
-	if [ "$?" != "0" ]; then
-		echo "****Docker Volume Backup Project was uninstalled with success!****"
-	else
-		echo "Docker Volume Backup Project wasn't uninstalled with success!"
-	fi
-	exec bash
-	exit
-else
-	echo "Invalid operation."
-	exit 1
-fi
+		close_program
+		;;
+esac
+
+execute_scripts "${CLI_PRE_SCRIPTS_PATH}" && execute_scripts "${PRE_STRATEGIES}"
 
 # Createing target file that will be used
 BKP_CONFIG_MODEL=$(mktemp --suffix=.json)
 
 for VOLUME in ${VOLUMES}; do
-	if [ "$1" = "backup" ]; then
+
+	if [ "${OPERATION}" = "backup" ]; then
 		# Creating target file for backup
 		multi_backup_config "${BKP_CONFIG_MODEL}" "${VOLUME}"
 	else
@@ -373,8 +361,8 @@ for VOLUME in ${VOLUMES}; do
 		-v "${LOCAL_TARGET}":/local-backup:${BACKUP_VOLUME_PROPERTY} \
 		-v "${VOLUME}":/source:${SOURCE_VOLUME_PROPERTY} \
 		-v ${CACHE_VOLUME}:/volumerize-cache \
-		-e GOOGLE_DRIVE_ID="${CLOUD_ACCESS_KEY_ID}" \
-		-e GOOGLE_DRIVE_SECRET="${CLOUD_SECRET_ACCESS_KEY}" \
+		-e GOOGLE_DRIVE_ID=${CLOUD_ACCESS_KEY_ID} \
+		-e GOOGLE_DRIVE_SECRET=${CLOUD_SECRET_ACCESS_KEY} \
 		-e AWS_ACCESS_KEY_ID=${CLOUD_ACCESS_KEY_ID} \
 		-e AWS_SECRET_ACCESS_KEY=${CLOUD_SECRET_ACCESS_KEY} \
 		-e VOLUMERIZE_SOURCE="/source" \
@@ -382,26 +370,19 @@ for VOLUME in ${VOLUMES}; do
 		-e TZ=${TZ} \
 		blacklabelops/volumerize bash -c "${COMMAND} && remove-older-than ${BACKUP_DATA_RETENTION} --force"
 
-	REMOVE_CACHE=$(exist_parameter "/" $@)
-
-	if ${REMOVE_CACHE}; then
+	[ "${REMOVE_CACHE}" ] && {
 		docker volume rm ${CACHE_VOLUME} > /dev/null
 		if [ $? -ne 0 ]; then
-			echo "Cache volume ${CACHE_VOLUME} failed when tried removed."
+			print_message "Cache volume ${CACHE_VOLUME} failed when tried removed." "${GREEN}"
 		else
-			echo "Cache volume ${CACHE_VOLUME} removed with success."
+			print_message "Cache volume ${CACHE_VOLUME} removed with success." "${RED}"
 		fi
-	fi
+	}
 done
 
 # removing taget file
 rm -f "${BKP_CONFIG_MODEL}"
 
-CLI_POS_SCRIPTS_PATH=$(get_parameter "--pos" $@)
-if [ "${CLI_POS_SCRIPTS_PATH}" ];then
-	execute_scripts ${CLI_POS_SCRIPTS_PATH}
-fi
+execute_scripts ${CLI_POS_SCRIPTS_PATH} && execute_scripts ${POS_STRATEGIES}
 
-if [ "${POS_STRATEGIES}" ]; then
-	execute_scripts ${POS_STRATEGIES}
-fi
+# ------------------------------------------------------------------------------------------------------------------- #
