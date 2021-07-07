@@ -342,7 +342,7 @@ case "${OPERATION}" in
 		print_message "${USAGE}" "${BOLD}" && close_program
 		;;
 	uninstall)
-		sed -i "/alias volume=/d" ${HOME}/.bashrc && rm -Rf "${INSTALL_PATH}"
+		sed -i "/PATH=\$PATH:.*.docker-volume-backup$/d" ${HOME}/.bashrc && rm -Rf "${INSTALL_PATH}"
 		if [ ! -d "${INSTALL_PATH}" ]; then
 			print_message "****Docker Volume Backup Project was uninstalled with success!****" "${GREEN}"
 		else

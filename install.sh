@@ -24,6 +24,8 @@
 #				 - Code optimization;
 #   v1.1.2 13/10/2020, Lucas Barbosa:
 #				 - Changing the version;
+#   v1.1.3 07/07/2021, Lucas Barbosa:
+#				 - Changing installation local of volume application;
 # ------------------------------------------------------------------------------------------------------------------- #
 # Tested in:
 #   bash 4.4.20
@@ -32,7 +34,7 @@
 # ------------------------------- FUNCTIONS ----------------------------------------- #
 version()
 {
-  echo "1.1.2"
+  echo "1.1.3"
 }
 
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -58,7 +60,8 @@ git clone https://github.com/nutes-uepb/docker-volume-backup ${INSTALL_PATH} > /
 git -C ${INSTALL_PATH} checkout "tags/$(version)" > /dev/null
 
 chmod +x ${INSTALL_PATH}/volume.sh
-echo "alias volume='${INSTALL_PATH}/volume.sh'" >> ${HOME}/.bashrc
+mv ${INSTALL_PATH}/volume.sh ${INSTALL_PATH}/volume
+echo "PATH=\$PATH:${INSTALL_PATH}" >> ${HOME}/.bashrc
 
 if [ -d "${INSTALL_PATH}" ];then
     echo -e "${GREEN}****Docker Volume Backup Project was installed with success!****"
