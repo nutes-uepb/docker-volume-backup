@@ -15,11 +15,11 @@ Project to backup and restore Docker volumes. In addition to performing local ba
 All software installation is performed using the following command:
 
 ```sh
-curl -o- https://raw.githubusercontent.com/nutes-uepb/docker-volume-backup/1.1.2/install.sh | bash; source ${HOME}/.bashrc
+curl -o- https://raw.githubusercontent.com/nutes-uepb/docker-volume-backup/1.1.3/install.sh | bash; source ${HOME}/.bashrc
 ```
 
 ```sh
-wget -qO- https://raw.githubusercontent.com/nutes-uepb/docker-volume-backup/1.1.2/install.sh | bash; source ${HOME}/.bashrc
+wget -qO- https://raw.githubusercontent.com/nutes-uepb/docker-volume-backup/1.1.3/install.sh | bash; source ${HOME}/.bashrc
 ```
 
 
