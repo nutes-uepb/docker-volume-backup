@@ -15,11 +15,11 @@ Project to backup and restore Docker volumes. In addition to performing local ba
 All software installation is performed using the following command:
 
 ```sh
-curl -o- https://raw.githubusercontent.com/nutes-uepb/docker-volume-backup/1.1.3/install.sh | bash; source ${HOME}/.bashrc
+curl -o- https://raw.githubusercontent.com/nutes-uepb/docker-volume-backup/1.1.4/install.sh | bash; source ${HOME}/.bashrc
 ```
 
 ```sh
-wget -qO- https://raw.githubusercontent.com/nutes-uepb/docker-volume-backup/1.1.3/install.sh | bash; source ${HOME}/.bashrc
+wget -qO- https://raw.githubusercontent.com/nutes-uepb/docker-volume-backup/1.1.4/install.sh | bash; source ${HOME}/.bashrc
 ```
 
 
@@ -79,8 +79,8 @@ To use the `backup` or` restore` operations, it is necessary to associate the fo
 | `CLOUD_SECRET_ACCESS_KEY` | Client Secret for access Google Driver or S3 service responsible to store backup data. | `J/YXk2xMaJQugb+vYm+c/TbTz+LpMnkxucdfv/Rh` |
 | `RESTORE_TARGET` | Define the target used to restore the backup. example value: `LOCAL, GOOGLE_DRIVE, AWS`. | `AWS` |
 | `BACKUP_DATA_RETENTION` | Time the data backup will remain stored. Default value (15 days): `15D`. | `15D` |
-| `PRE_STRATEGIES` | Directory path that contains the scripts that will be executed before starting the backup or restore operation. All scripts that have the .sh extension will be executed in alphabetical order. | `/path/to/pre/strategies` |
-| `POS_STRATEGIES` | Directory path containing the scripts that will be executed after starting the backup or restore operation. All scripts that have the .sh extension will be executed in alphabetical order. | `/path/to/pos/strategies` |
+| `PRE_STRATEGIES` | Directory path that contains the scripts that will be executed before starting the backup or restore operation. All scripts that have the .sh extension will be executed in alphabetical order. | `${HOME}/.docker-volume-backup/strategies/pre` |
+| `POS_STRATEGIES` | Directory path containing the scripts that will be executed after starting the backup or restore operation. All scripts that have the .sh extension will be executed in alphabetical order. | `${HOME}/.docker-volume-backup/strategies/pos` |
 | `TZ` | You can set the time zone with the environment variable TZ. | `Europe/Berlin` |
 | `CONTAINER_NAME` | Name of the container that will perform the backup and restore operations. | `backup-container` |
 | `GOOGLE_CREDENTIALS_VOLUME` | Volume name that stores the google drive credentials. | `google-drive-credentials` |

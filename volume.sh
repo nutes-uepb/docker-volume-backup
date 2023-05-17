@@ -381,7 +381,7 @@ for VOLUME in ${VOLUMES}; do
 		-e VOLUMERIZE_SOURCE="/source" \
 		-e VOLUMERIZE_TARGET="multi:///etc/volumerize/multiconfig.json?mode=mirror&onfail=abort" \
 		-e TZ=${TZ} \
-		blacklabelops/volumerize:"${VOLUMERIZE_VERSION}" bash -c "${COMMAND} && remove-older-than ${BACKUP_DATA_RETENTION} --force"
+		blacklabelops/volumerize:"${VOLUMERIZE_VERSION}" bash -c "${COMMAND} && remove-older-than ${BACKUP_DATA_RETENTION} --force && [ ${COMMAND} == "backupFull" ] && chmod -R 777 /local-backup"
 
 	[ "${REMOVE_CACHE}" ] && {
 		docker volume rm ${CACHE_VOLUME} > /dev/null
