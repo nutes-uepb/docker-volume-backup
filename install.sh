@@ -34,7 +34,7 @@
 # ------------------------------- FUNCTIONS ----------------------------------------- #
 version()
 {
-  echo "1.1.3"
+  echo "1.1.4"
 }
 
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -61,6 +61,7 @@ git -C ${INSTALL_PATH} checkout "tags/$(version)" > /dev/null
 
 chmod +x ${INSTALL_PATH}/volume.sh
 mv ${INSTALL_PATH}/volume.sh ${INSTALL_PATH}/volume
+mkdir -p ${INSTALL_PATH}/strategies/pos ${INSTALL_PATH}/strategies/pre
 echo "PATH=\$PATH:${INSTALL_PATH}" >> ${HOME}/.bashrc
 
 if [ -d "${INSTALL_PATH}" ];then
